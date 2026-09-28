@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DailyLimitTransactionSystem.Application/DailyLimitTransactionSystem.Application.csproj" />
+    <Project Path="src/DailyLimitTransactionSystem.ConsoleApp/DailyLimitTransactionSystem.ConsoleApp.csproj" />
+    <Project Path="src/DailyLimitTransactionSystem.Core/DailyLimitTransactionSystem.Core.csproj" />
+    <Project Path="src/DailyLimitTransactionSystem.Infrastructure/DailyLimitTransactionSystem.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DailyLimitTransactionSystem.Tests/DailyLimitTransactionSystem.Tests.csproj" />
+  </Folder>
+</Solution>

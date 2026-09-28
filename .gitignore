@@ -1,0 +1,78 @@
+## --------------------------------------------------
+## .NET / C# / Visual Studio / Rider / VS Code
+## --------------------------------------------------
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+build/
+Generated/
+Generated_Code/
+
+# Visual Studio files
+.vs/
+*.user
+*.userprefs
+*.suo
+*.userosscache
+*.sln.docstates
+*.VisualState.xml
+
+# JetBrains Rider / ReSharper
+.idea/
+*.DotSettings.user
+_ReSharper*/
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Test results & Code Coverage
+TestResults/
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+*.opencover.xml
+coverage/
+coveragereport/
+*.dotCover
+
+# NuGet
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.assets.json
+packages/
+*.nupkg
+*.snupkg
+
+# User secrets & local overrides
+*.local.json
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+.env
+.env.*
+!.env.example
+
+# Crash dumps & Log files
+*.log
+*.dmp
+*.mdmp
+*.crash
+
+# OS-generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
