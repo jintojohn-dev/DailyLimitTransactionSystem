@@ -10,8 +10,8 @@ public record DailyLimitPolicy
 public class Transaction
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string TransferReferenceNumber { get; set; }
-    public string ParticipantReferenceNumber { get; set; }
+    public string? TransferReferenceNumber { get; set; }
+    public string? ParticipantReferenceNumber { get; set; }
     public required string UserId { get; set; }
     public decimal Amount { get; set; }
     public DateTime ScheduledExecutionTime { get; set; }

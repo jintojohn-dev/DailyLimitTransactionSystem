@@ -10,17 +10,15 @@ public class RedisDailyLimitService : IDailyLimitService
 {
     private readonly IConnectionMultiplexer? _redis;
     private readonly ILogger<RedisDailyLimitService> _logger;
-    private readonly TimeSpan _ttlBuffer;
 
     // Fallback thread-safe in-memory cache when Redis is not reachable / mock mode
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (decimal Spend, DateTime Expiry)> _inMemoryStore = new();
     private static readonly object _inMemoryLock = new();
 
-    public RedisDailyLimitService(ILogger<RedisDailyLimitService> logger, IConnectionMultiplexer? redis = null, TimeSpan? ttlBuffer = null)
+    public RedisDailyLimitService(ILogger<RedisDailyLimitService> logger, IConnectionMultiplexer? redis = null)
     {
         _logger = logger;
         _redis = redis;
-        _ttlBuffer = ttlBuffer ?? TimeSpan.FromHours(24); // default buffer
     }
 
     private static string GetDailyLimitKey(string userId, DateOnly date) => $"limit:user:{userId}:{date:yyyy-MM-dd}";
@@ -34,7 +32,7 @@ public class RedisDailyLimitService : IDailyLimitService
         CancellationToken ct = default)
     {
         var key = GetDailyLimitKey(userId, date);
-        var effectiveTtl = ttl ?? ComputeEffectiveTtl(date);
+        var effectiveTtl = ttl ?? TimeSpan.FromHours(48); // 48h covers end-of-day + buffer
 
         if (_redis != null && _redis.IsConnected)
         {
@@ -132,23 +130,6 @@ public class RedisDailyLimitService : IDailyLimitService
                 };
             }
         }
-    }
-
-    // Exposed for testing: compute effective TTL for a target date when ttl not provided.
-    public TimeSpan ComputeEffectiveTtl(DateOnly targetDate, TimeSpan? overrideTtl = null)
-    {
-        if (overrideTtl != null) return overrideTtl.Value;
-
-        // Compute UTC midnight following the target date (start of next day) then add buffer.
-        var nextDay = targetDate.AddDays(1);
-        var nextDayUtc = DateTime.SpecifyKind(nextDay.ToDateTime(new TimeOnly(0, 0)), DateTimeKind.Utc);
-        var now = DateTime.UtcNow;
-        var baseTtl = nextDayUtc - now;
-        if (baseTtl < TimeSpan.Zero) baseTtl = TimeSpan.Zero;
-        var total = baseTtl + _ttlBuffer;
-        // Minimum TTL 1 minute
-        if (total < TimeSpan.FromMinutes(1)) total = TimeSpan.FromMinutes(1);
-        return total;
     }
 
     public async Task<decimal> GetCurrentDailySpendAsync(string userId, DateOnly date, CancellationToken ct = default)

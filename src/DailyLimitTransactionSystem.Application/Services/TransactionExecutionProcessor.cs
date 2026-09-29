@@ -63,6 +63,40 @@ public class TransactionExecutionProcessor
 
         try
         {
+            var limitResult = await _dailyLimitService.TryDeductDailyLimitAsync(
+                transaction.UserId,
+                transaction.TargetDate,
+                transaction.Amount,
+                dailyLimit,
+                ct: ct
+            );
+
+            if (!limitResult.IsAllowed)
+            {
+                _logger.LogWarning(
+                    "❌ [REJECTED] Tx {TxId} exceeded limit. Attempted: ${Amount:N2}, Current Spend: ${Current:N2}, Limit: ${Limit:N2}",
+                    transaction.Id[..8], transaction.Amount, limitResult.CurrentTotalSpent, dailyLimit
+                );
+
+                transaction.Status = TransactionStatus.Failed;
+                transaction.RejectionReason = RejectionReason.DailyLimitExceeded;
+                transaction.FailureDetails = "Daily limit exceeded.";
+                transaction.ProcessedAt = DateTime.UtcNow;
+
+                var rejectedResult = TransactionResult.Rejected(
+                    transaction.Id,
+                    transaction.UserId,
+                    transaction.Amount,
+                    limitResult.CurrentTotalSpent,
+                    dailyLimit,
+                    RejectionReason.DailyLimitExceeded,
+                    "Transaction exceeds the daily allowed limit."
+                );
+
+                await _transactionRepository.SaveAsync(transaction, ct);
+                return rejectedResult;
+            }
+
             if (string.IsNullOrWhiteSpace(transaction.ParticipantReferenceNumber))
             {
                 await CreateTransferAsync(transaction, ct);
@@ -71,24 +105,13 @@ public class TransactionExecutionProcessor
             {
                 await CompleteTransferAsync(transaction, ct);
             }
-
             else
             {
-
                 _logger.LogInformation(
                     "✅ [SUCCESS] Tx {TxId} SUCCEEDED! Transferred: ${Amount:N2}, Total Day Spend: ${DailyLimit:N2}",
-                    transaction.Id[..8], transaction.Amount, dailyLimit
+                    transaction.Id[..8], transaction.Amount, limitResult.CurrentTotalSpent
                 );
             }
-            // 2. Pre-process: validate, enrich, and prepare the transfer
-
-
-            // 3. Process: execute the transfer (dummy bank dispatch)
-
-
-
- 
-
 
             transaction.Status = TransactionStatus.Succeeded;
             transaction.ProcessedAt = DateTime.UtcNow;
