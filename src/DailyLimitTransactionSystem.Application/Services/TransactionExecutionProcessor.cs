@@ -63,77 +63,32 @@ public class TransactionExecutionProcessor
 
         try
         {
+            if (string.IsNullOrWhiteSpace(transaction.ParticipantReferenceNumber))
+            {
+                await CreateTransferAsync(transaction, ct);
+            }
+            else if (string.IsNullOrWhiteSpace(transaction.TransferReferenceNumber))
+            {
+                await CompleteTransferAsync(transaction, ct);
+            }
+
+            else
+            {
+
+                _logger.LogInformation(
+                    "✅ [SUCCESS] Tx {TxId} SUCCEEDED! Transferred: ${Amount:N2}, Total Day Spend: ${DailyLimit:N2}",
+                    transaction.Id[..8], transaction.Amount, dailyLimit
+                );
+            }
             // 2. Pre-process: validate, enrich, and prepare the transfer
-            await PreProcessTransferAsync(transaction, ct);
+
 
             // 3. Process: execute the transfer (dummy bank dispatch)
-            var transferSuccess = await ProcessTransferAsync(transaction, ct);
 
-            if (!transferSuccess)
-            {
-                _logger.LogError("Transfer processing failed for Tx {TxId}.", transaction.Id[..8]);
 
-                transaction.Status = TransactionStatus.Failed;
-                transaction.RejectionReason = RejectionReason.SystemError;
-                transaction.FailureDetails = "Transfer processing failed.";
-                transaction.ProcessedAt = DateTime.UtcNow;
 
-                var currentSpend = await _dailyLimitService.GetCurrentDailySpendAsync(transaction.UserId, transaction.TargetDate, ct);
-                var failResult = TransactionResult.Rejected(
-                    transaction.Id,
-                    transaction.UserId,
-                    transaction.Amount,
-                    currentSpend,
-                    dailyLimit,
-                    RejectionReason.SystemError,
-                    "Transfer processing failed."
-                );
+ 
 
-                await _transactionRepository.SaveAsync(transaction, ct);
-                return failResult;
-            }
-
-            // 4. Success — update spend tracking and persist
-            // Use the daily limit service to record the spend (simple increment, no Lua script)
-            var limitResult = await _dailyLimitService.TryDeductDailyLimitAsync(
-                transaction.UserId,
-                transaction.TargetDate,
-                transaction.Amount,
-                dailyLimit,
-                ttl: TimeSpan.FromHours(48),
-                ct: ct
-            );
-
-            if (!limitResult.IsAllowed)
-            {
-                _logger.LogWarning(
-                    "❌ [REJECTED] Tx {TxId} REJECTED! Requested: ${Amount:N2}, Current Spent: ${CurrentSpent:N2}, Limit: ${DailyLimit:N2}, Remaining: ${Remaining:N2}",
-                    transaction.Id[..8], transaction.Amount, limitResult.CurrentTotalSpent, dailyLimit, limitResult.RemainingLimit
-                );
-
-                transaction.Status = TransactionStatus.Rejected;
-                transaction.RejectionReason = RejectionReason.DailyLimitExceeded;
-                transaction.FailureDetails = limitResult.Reason;
-                transaction.ProcessedAt = DateTime.UtcNow;
-
-                var rejectedResult = TransactionResult.Rejected(
-                    transaction.Id,
-                    transaction.UserId,
-                    transaction.Amount,
-                    limitResult.CurrentTotalSpent,
-                    dailyLimit,
-                    RejectionReason.DailyLimitExceeded,
-                    $"Daily limit of ${dailyLimit:N2} exceeded. Current spend: ${limitResult.CurrentTotalSpent:N2}, Remaining: ${limitResult.RemainingLimit:N2}"
-                );
-
-                await _transactionRepository.SaveAsync(transaction, ct);
-                return rejectedResult;
-            }
-
-            _logger.LogInformation(
-                "✅ [SUCCESS] Tx {TxId} SUCCEEDED! Transferred: ${Amount:N2}, Total Day Spend: ${CurrentSpent:N2} / ${DailyLimit:N2}, Remaining: ${Remaining:N2}",
-                transaction.Id[..8], transaction.Amount, limitResult.CurrentTotalSpent, dailyLimit, limitResult.RemainingLimit
-            );
 
             transaction.Status = TransactionStatus.Succeeded;
             transaction.ProcessedAt = DateTime.UtcNow;
@@ -160,7 +115,7 @@ public class TransactionExecutionProcessor
     /// Dummy pre-processing step: validates and enriches the transfer before execution.
     /// In a real system this would perform AML/fraud checks, recipient validation, etc.
     /// </summary>
-    private async Task PreProcessTransferAsync(Transaction transaction, CancellationToken ct)
+    private async Task CompleteTransferAsync(Transaction transaction, CancellationToken ct)
     {
         _logger.LogInformation(
             "[PreProcess] Validating and enriching Tx {TxId} | User: {UserId} | Amount: ${Amount:N2}",
@@ -178,7 +133,7 @@ public class TransactionExecutionProcessor
     /// Dummy transfer processing step: dispatches the transfer to the bank/payment gateway.
     /// In a real system this would call downstream APIs for fund transfer.
     /// </summary>
-    private async Task<bool> ProcessTransferAsync(Transaction transaction, CancellationToken ct)
+    private async Task<bool> CreateTransferAsync(Transaction transaction, CancellationToken ct)
     {
         _logger.LogInformation(
             "[ProcessTransfer] Dispatching Tx {TxId} to payment gateway | Amount: ${Amount:N2}",
