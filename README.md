@@ -126,6 +126,14 @@ A poller retrieves due transactions with `ZRANGEBYSCORE` and dispatches them in 
 
 **Fix:** `RedisMessageScheduler.GetAndPollDueTransactionsAsync` now sorts by `CreatedAt` before dispatch, guaranteeing creation-order FIFO.
 
+### Bug #3 — Missing Daily Limit Check and Compilation Errors
+
+**Symptom:** The project failed to build with errors about `limitResult` not existing and `RejectionReason.LimitExceeded` not containing a definition. 
+
+**Root Cause:** The `TransactionExecutionProcessor` was missing the daily limit deduction logic block (`TryDeductDailyLimitAsync`). Additionally, `RejectionReason` enum was using `DailyLimitExceeded` instead of `LimitExceeded`, and `Transaction` properties `TransferReferenceNumber` and `ParticipantReferenceNumber` were non-nullable without initialization, triggering warnings.
+
+**Fix:** Restored the `_dailyLimitService.TryDeductDailyLimitAsync` check, corrected the `RejectionReason` to `DailyLimitExceeded`, and made the reference number properties nullable (`string?`). Added a unit test validating correct handling of transactions with null reference numbers.
+
 ---
 
 ## Demo Scenarios

@@ -170,4 +170,30 @@ public class ConcurrencyAndLimitTests
         var finalSpend = await _dailyLimitService.GetCurrentDailySpendAsync(userId, targetDate);
         finalSpend.Should().Be(2200.00m, "Only Transfer #1 should have been processed");
     }
+
+    [Fact]
+    public async Task TransactionProcessor_WithNullReferenceNumbers_Succeeds()
+    {
+        var userId = $"user_null_refs_{Guid.NewGuid():N}";
+        var targetDate = new DateOnly(2026, 9, 30);
+        decimal dailyLimit = 3000.00m;
+
+        var tx = new Transaction
+        {
+            Id = "NullRefsTx_" + Guid.NewGuid().ToString("N"),
+            UserId = userId,
+            Amount = 100.00m,
+            ScheduledExecutionTime = new DateTime(2026, 9, 30, 9, 0, 0),
+            TargetDate = targetDate,
+            Description = "Transfer with null reference numbers",
+            ParticipantReferenceNumber = null,
+            TransferReferenceNumber = null
+        };
+
+        var result = await _processor.ProcessTransactionAsync(tx, dailyLimit);
+
+        result.IsSuccess.Should().BeTrue();
+        result.CurrentTotalSpent.Should().Be(100.00m);
+        tx.Status.Should().Be(TransactionStatus.Succeeded);
+    }
 }
