@@ -57,4 +57,22 @@ public static class LuaScripts
             return 0
         end
     ";
+
+    /// <summary>
+    /// Atomically fetches all members with score <= maxScore from a sorted set and removes them.
+    /// Returns an array of members that were removed.
+    /// Args: KEYS[1] = sorted set key, ARGV[1] = maxScore
+    /// </summary>
+    public const string FetchAndRemoveDue = @"
+        local key = KEYS[1]
+        local maxScore = tonumber(ARGV[1])
+        local members = redis.call('ZRANGEBYSCORE', key, 0, maxScore)
+        if #members == 0 then
+            return members
+        end
+        for i=1,#members do
+            redis.call('ZREM', key, members[i])
+        end
+        return members
+    ";
 }
