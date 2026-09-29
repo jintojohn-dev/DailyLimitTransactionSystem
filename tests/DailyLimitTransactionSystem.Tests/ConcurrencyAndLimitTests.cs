@@ -12,7 +12,6 @@ public class ConcurrencyAndLimitTests
 {
     private readonly IDailyLimitService _dailyLimitService;
     private readonly IDistributedLockService _lockService;
-    private readonly IIdempotencyService _idempotencyService;
     private readonly ITransactionRepository _repository;
     private readonly TransactionExecutionProcessor _processor;
 
@@ -20,13 +19,11 @@ public class ConcurrencyAndLimitTests
     {
         _dailyLimitService = new RedisDailyLimitService(NullLogger<RedisDailyLimitService>.Instance);
         _lockService = new RedisDistributedLockService(NullLogger<RedisDistributedLockService>.Instance);
-        _idempotencyService = new RedisIdempotencyService(NullLogger<RedisIdempotencyService>.Instance);
         _repository = new InMemoryTransactionRepository();
 
         _processor = new TransactionExecutionProcessor(
             _dailyLimitService,
             _lockService,
-            _idempotencyService,
             _repository,
             NullLogger<TransactionExecutionProcessor>.Instance
         );
@@ -128,36 +125,6 @@ public class ConcurrencyAndLimitTests
 
         var finalSpend = await _dailyLimitService.GetCurrentDailySpendAsync(userId, targetDate);
         finalSpend.Should().Be(3000.00m);
-    }
-
-    [Fact]
-    public async Task Idempotency_DuplicateMessage_DoesNotDoubleDeduct()
-    {
-        var userId = $"user_idempotent_{Guid.NewGuid():N}";
-        var targetDate = new DateOnly(2026, 9, 24);
-        decimal dailyLimit = 3000.00m;
-
-        var tx = new Transaction
-        {
-            Id = "SameTxId_MassTransit_12345",
-            UserId = userId,
-            Amount = 1500.00m,
-            ScheduledExecutionTime = DateTime.UtcNow,
-            TargetDate = targetDate
-        };
-
-        // First delivery
-        var res1 = await _processor.ProcessTransactionAsync(tx, dailyLimit);
-        res1.IsSuccess.Should().BeTrue();
-        res1.CurrentTotalSpent.Should().Be(1500.00m);
-
-        // Duplicate delivery (e.g. MassTransit / Azure Service Bus redelivery)
-        var res2 = await _processor.ProcessTransactionAsync(tx, dailyLimit);
-        res2.IsSuccess.Should().BeTrue();
-        res2.CurrentTotalSpent.Should().Be(1500.00m);
-
-        var finalSpend = await _dailyLimitService.GetCurrentDailySpendAsync(userId, targetDate);
-        finalSpend.Should().Be(1500.00m, "Duplicate delivery must not increment spend");
     }
 
 

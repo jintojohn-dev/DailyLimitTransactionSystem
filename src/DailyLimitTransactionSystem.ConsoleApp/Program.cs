@@ -42,7 +42,7 @@ public class Program
 
         services.AddSingleton<IDailyLimitService>(sp => new RedisDailyLimitService(sp.GetRequiredService<ILogger<RedisDailyLimitService>>(), redis));
         services.AddSingleton<IDistributedLockService>(sp => new RedisDistributedLockService(sp.GetRequiredService<ILogger<RedisDistributedLockService>>(), redis));
-        services.AddSingleton<IIdempotencyService>(sp => new RedisIdempotencyService(sp.GetRequiredService<ILogger<RedisIdempotencyService>>(), redis));
+
         services.AddSingleton<ITransactionRepository, InMemoryTransactionRepository>();
         services.AddSingleton<TransactionExecutionProcessor>();
 
