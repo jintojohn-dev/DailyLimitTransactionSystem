@@ -31,30 +31,19 @@ public class MassTransitMessagePublisher : IMessagePublisher
             Description = transaction.Description
         };
 
+        // Azure Service Bus Basic Tier does NOT support:
+        //   - Sessions (SessionId) — requires Standard/Premium tier
+        //   - Partition keys — requires Standard/Premium tier
+        //   - ScheduledEnqueueTimeUtc — requires Standard/Premium tier
+        // Instead, ordering and concurrency are handled by Redis distributed locks + atomic Lua scripts.
+        // Future scheduling is handled by RedisMessageScheduler (ZADD sorted set poller).
         await _publishEndpoint.Publish(command, context =>
         {
-            try
-            {
-                // In MassTransit with Azure Service Bus, we set SessionId and PartitionKey to the UserId
-                // This ensures Azure Service Bus enforces strict FIFO ordering per user session!
-                context.SetSessionId(transaction.UserId);
-                context.SetPartitionKey(transaction.UserId);
-
-                if (transaction.ScheduledExecutionTime > DateTime.UtcNow)
-                {
-                    context.SetScheduledEnqueueTime(transaction.ScheduledExecutionTime);
-                }
-            }
-            catch
-            {
-                // Non-ASB or In-Memory test fallback doesn't support session contexts
-            }
-
             context.MessageId = Guid.TryParse(transaction.Id, out var msgId) ? msgId : NewId.NextGuid();
         }, ct);
 
         _logger.LogInformation(
-            "[MassTransit Publisher] Published ExecuteTransactionCommand for Tx {TxId} | User/Session: {UserId} | Amount: ${Amount:N2} | Enqueue: {Enqueue:yyyy-MM-dd HH:mm:ss}",
+            "[MassTransit Publisher] Published ExecuteTransactionCommand for Tx {TxId} | User: {UserId} | Amount: ${Amount:N2} | ScheduledFor: {ScheduledTime:yyyy-MM-dd HH:mm:ss}",
             transaction.Id[..8], transaction.UserId, transaction.Amount, transaction.ScheduledExecutionTime
         );
     }
@@ -72,17 +61,6 @@ public class MassTransitMessagePublisher : IMessagePublisher
                 DailyLimit = result.DailyLimit,
                 RemainingLimit = result.RemainingLimit,
                 IsSuccess = true
-            }, context =>
-            {
-                try
-                {
-                    context.SetSessionId(result.UserId);
-                    context.SetPartitionKey(result.UserId);
-                }
-                catch
-                {
-                    // Fallback
-                }
             }, ct);
         }
         else
@@ -97,17 +75,6 @@ public class MassTransitMessagePublisher : IMessagePublisher
                 RemainingLimit = result.RemainingLimit,
                 Reason = result.RejectionReason,
                 Message = result.Message
-            }, context =>
-            {
-                try
-                {
-                    context.SetSessionId(result.UserId);
-                    context.SetPartitionKey(result.UserId);
-                }
-                catch
-                {
-                    // Fallback
-                }
             }, ct);
         }
 

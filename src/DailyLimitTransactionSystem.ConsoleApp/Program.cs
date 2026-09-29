@@ -1,9 +1,9 @@
 using DailyLimitTransactionSystem.Application.Services;
 using DailyLimitTransactionSystem.Core.Interfaces;
 using DailyLimitTransactionSystem.Core.Models;
-using DailyLimitTransactionSystem.Infrastructure.MassTransit;
 using DailyLimitTransactionSystem.Infrastructure.Redis;
 using DailyLimitTransactionSystem.Infrastructure.Repositories;
+using DailyLimitTransactionSystem.Infrastructure.MassTransit;
 using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,7 +91,7 @@ public class Program
         ));
         services.AddSingleton<TransactionExecutionProcessor>();
         services.AddSingleton<TransactionSchedulerService>();
-        services.AddSingleton<ReservationSchedulerService>();
+
 
         // Azure Service Bus Connection (from appsettings.json or env var override)
         if (!string.IsNullOrWhiteSpace(asbConnectionString))
@@ -103,7 +103,7 @@ public class Program
         else
         {
             Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine(" [MassTransit] Configured with MassTransit In-Memory Transport (Azure Service Bus Basic Tier Queue Mode).");
+            Console.WriteLine(" [Messaging] No Azure Service Bus configured — using in-process publisher (MassTransit removed).");
             Console.ResetColor();
         }
 
@@ -129,9 +129,8 @@ public class Program
             // 2. Run Demonstrations
             await RunScenario1_IrregularArrivalAsync(provider);
             await RunScenario2_HighConcurrencyRaceConditionAsync(provider);
-            await RunScenario3_PreReservationPatternAsync(provider);
-            await RunScenario4_BasicTierRedisScheduledPollingAsync(provider);
-            await RunScenario5_Bug2_CreationOrderFIFOAsync(provider);
+            await RunScenario3_BasicTierRedisScheduledPollingAsync(provider);
+            await RunScenario4_Bug2_CreationOrderFIFOAsync(provider);
         }
         finally
         {
@@ -266,51 +265,7 @@ public class Program
         Console.WriteLine(new string('-', 80));
     }
 
-    private static async Task RunScenario3_PreReservationPatternAsync(IServiceProvider provider)
-    {
-        Console.WriteLine("\n" + new string('=', 80));
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine(" SCENARIO 3: STRATEGY B - UPFRONT QUOTA PRE-RESERVATION AT SCHEDULE TIME");
-        Console.WriteLine(" User Daily Limit: $3,000.00");
-        Console.WriteLine(" Scheduling transactions in advance with proactive quota validation:");
-        Console.WriteLine("   - T1: $1,500.00");
-        Console.WriteLine("   - T2: $2,000.00");
-        Console.WriteLine("   - T3: $1,000.00");
-        Console.ResetColor();
-        Console.WriteLine(new string('=', 80));
-
-        var reservationService = provider.GetRequiredService<ReservationSchedulerService>();
-        var limitService = provider.GetRequiredService<IDailyLimitService>();
-        var userId = "user_reservation_demo";
-        var targetDate = DateTime.UtcNow.Date.AddDays(1);
-        decimal dailyLimit = _dailyLimit;
-
-        await limitService.ResetDailyLimitAsync(userId, DateOnly.FromDateTime(targetDate));
-
-        // T1
-        Console.WriteLine("\n[1] User attempts to schedule T1: $1,500.00 for tomorrow...");
-        var (t1Ok, _, t1Msg) = await reservationService.ScheduleWithReservationAsync(userId, 1500.00m, targetDate.AddHours(9), dailyLimit);
-        PrintReservationStatus("T1 ($1,500.00)", t1Ok, t1Msg);
-
-        // T2
-        Console.WriteLine("\n[2] User attempts to schedule T2: $2,000.00 for tomorrow...");
-        var (t2Ok, _, t2Msg) = await reservationService.ScheduleWithReservationAsync(userId, 2000.00m, targetDate.AddHours(12), dailyLimit);
-        PrintReservationStatus("T2 ($2,000.00)", t2Ok, t2Msg);
-
-        // T3
-        Console.WriteLine("\n[3] User attempts to schedule T3: $1,000.00 for tomorrow...");
-        var (t3Ok, _, t3Msg) = await reservationService.ScheduleWithReservationAsync(userId, 1000.00m, targetDate.AddHours(15), dailyLimit);
-        PrintReservationStatus("T3 ($1,000.00)", t3Ok, t3Msg);
-
-        decimal totalReserved = await limitService.GetCurrentDailySpendAsync(userId, DateOnly.FromDateTime(targetDate));
-        Console.WriteLine("\n" + new string('-', 80));
-        Console.ForegroundColor = ConsoleColor.Green;
-        Console.WriteLine($" [RESERVATION SUMMARY] Total Quota Reserved: ${totalReserved:N2} / ${dailyLimit:N2} | Remaining Available: ${dailyLimit - totalReserved:N2}");
-        Console.ResetColor();
-        Console.WriteLine(new string('-', 80));
-    }
-
-    private static async Task RunScenario4_BasicTierRedisScheduledPollingAsync(IServiceProvider provider)
+    private static async Task RunScenario3_BasicTierRedisScheduledPollingAsync(IServiceProvider provider)
     {
         Console.WriteLine("\n" + new string('=', 80));
         Console.ForegroundColor = ConsoleColor.Cyan;
@@ -394,7 +349,7 @@ public class Program
     /// 
     /// Fix: RedisMessageScheduler now sorts due transactions by CreatedAt before dispatching.
     /// </summary>
-    private static async Task RunScenario5_Bug2_CreationOrderFIFOAsync(IServiceProvider provider)
+    private static async Task RunScenario4_Bug2_CreationOrderFIFOAsync(IServiceProvider provider)
     {
         Console.WriteLine("\n" + new string('=', 80));
         Console.ForegroundColor = ConsoleColor.Magenta;
@@ -522,20 +477,6 @@ public class Program
         Console.ResetColor();
     }
 
-    private static void PrintReservationStatus(string label, bool ok, string msg)
-    {
-        if (ok)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"   >>> APPROVED: {label} -> {msg}");
-        }
-        else
-        {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine($"   >>> REJECTED EARLY: {label} -> {msg}");
-        }
-        Console.ResetColor();
-    }
 
     private static void PrintHeader()
     {

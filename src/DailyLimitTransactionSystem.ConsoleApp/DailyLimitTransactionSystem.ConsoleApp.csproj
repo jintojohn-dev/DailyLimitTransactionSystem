@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\DailyLimitTransactionSystem.Core\DailyLimitTransactionSystem.Core.csproj" />
@@ -23,6 +23,10 @@
     <None Update="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Messaging\" />
   </ItemGroup>
 
   <PropertyGroup>

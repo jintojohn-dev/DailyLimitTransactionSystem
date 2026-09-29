@@ -10,7 +10,6 @@ public class TransactionExecutionProcessor
     private readonly IDistributedLockService _lockService;
     private readonly IIdempotencyService _idempotencyService;
     private readonly ITransactionRepository _transactionRepository;
-    private readonly IMessagePublisher _messagePublisher;
     private readonly ILogger<TransactionExecutionProcessor> _logger;
 
     public TransactionExecutionProcessor(
@@ -18,19 +17,18 @@ public class TransactionExecutionProcessor
         IDistributedLockService lockService,
         IIdempotencyService idempotencyService,
         ITransactionRepository transactionRepository,
-        IMessagePublisher messagePublisher,
         ILogger<TransactionExecutionProcessor> logger)
     {
         _dailyLimitService = dailyLimitService;
         _lockService = lockService;
         _idempotencyService = idempotencyService;
         _transactionRepository = transactionRepository;
-        _messagePublisher = messagePublisher;
         _logger = logger;
     }
 
     /// <summary>
     /// Core processing pipeline combining Distributed Locking, Idempotency, and Atomic Redis Lua verification.
+    /// Returns a TransactionResult — event publishing is the caller's responsibility (e.g. ProcessTransactionConsumer).
     /// </summary>
     public async Task<TransactionResult> ProcessTransactionAsync(
         Transaction transaction,
@@ -133,7 +131,6 @@ public class TransactionExecutionProcessor
 
                 await _transactionRepository.SaveAsync(transaction, ct);
                 await _idempotencyService.MarkCompletedAsync(transaction.Id, result, TimeSpan.FromHours(24), ct);
-                await _messagePublisher.PublishTransactionCompletedAsync(result, ct);
                 return result;
             }
 
@@ -164,7 +161,6 @@ public class TransactionExecutionProcessor
 
                 await _transactionRepository.SaveAsync(transaction, ct);
                 await _idempotencyService.MarkCompletedAsync(transaction.Id, result, TimeSpan.FromHours(24), ct);
-                await _messagePublisher.PublishTransactionCompletedAsync(result, ct);
                 return result;
             }
 
@@ -187,7 +183,6 @@ public class TransactionExecutionProcessor
 
             await _transactionRepository.SaveAsync(transaction, ct);
             await _idempotencyService.MarkCompletedAsync(transaction.Id, successResult, TimeSpan.FromHours(24), ct);
-            await _messagePublisher.PublishTransactionCompletedAsync(successResult, ct);
             return successResult;
         }
         catch (Exception ex)

@@ -1,14 +1,11 @@
 using DailyLimitTransactionSystem.Application.Services;
-using DailyLimitTransactionSystem.Core.Contracts;
 using DailyLimitTransactionSystem.Core.Interfaces;
 using DailyLimitTransactionSystem.Core.Models;
-using DailyLimitTransactionSystem.Infrastructure.MassTransit;
 using DailyLimitTransactionSystem.Infrastructure.Redis;
 using DailyLimitTransactionSystem.Infrastructure.Repositories;
 using FluentAssertions;
-using MassTransit;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+
 using Xunit;
 
 namespace DailyLimitTransactionSystem.Tests;
@@ -19,9 +16,7 @@ public class ConcurrencyAndLimitTests
     private readonly IDistributedLockService _lockService;
     private readonly IIdempotencyService _idempotencyService;
     private readonly ITransactionRepository _repository;
-    private readonly IMessagePublisher _publisher;
     private readonly TransactionExecutionProcessor _processor;
-    private readonly Mock<IPublishEndpoint> _publishEndpointMock;
 
     public ConcurrencyAndLimitTests()
     {
@@ -30,18 +25,11 @@ public class ConcurrencyAndLimitTests
         _idempotencyService = new RedisIdempotencyService(NullLogger<RedisIdempotencyService>.Instance);
         _repository = new InMemoryTransactionRepository();
 
-        _publishEndpointMock = new Mock<IPublishEndpoint>();
-        _publisher = new MassTransitMessagePublisher(
-            _publishEndpointMock.Object,
-            NullLogger<MassTransitMessagePublisher>.Instance
-        );
-
         _processor = new TransactionExecutionProcessor(
             _dailyLimitService,
             _lockService,
             _idempotencyService,
             _repository,
-            _publisher,
             NullLogger<TransactionExecutionProcessor>.Instance
         );
     }
@@ -174,42 +162,6 @@ public class ConcurrencyAndLimitTests
         finalSpend.Should().Be(1500.00m, "Duplicate delivery must not increment spend");
     }
 
-    [Fact]
-    public async Task ReservationPattern_RejectsEarlyAtScheduleTime()
-    {
-        var userId = $"user_reserve_{Guid.NewGuid():N}";
-        var targetDate = DateTime.UtcNow.Date.AddDays(1);
-        decimal dailyLimit = 3000.00m;
-
-        var reservationService = new ReservationSchedulerService(
-            _dailyLimitService,
-            _publisher,
-            _repository,
-            NullLogger<ReservationSchedulerService>.Instance
-        );
-
-        // Schedule T1: $1500
-        var (t1Success, _, _) = await reservationService.ScheduleWithReservationAsync(
-            userId, 1500.00m, targetDate.AddHours(9), dailyLimit
-        );
-        t1Success.Should().BeTrue();
-
-        // Schedule T2: $2000 -> Should fail immediately at scheduling time!
-        var (t2Success, _, t2Msg) = await reservationService.ScheduleWithReservationAsync(
-            userId, 2000.00m, targetDate.AddHours(12), dailyLimit
-        );
-        t2Success.Should().BeFalse("1500 + 2000 = 3500 > 3000");
-        t2Msg.Should().Contain("Daily limit");
-
-        // Schedule T3: $1000 -> Should succeed (1500 + 1000 = 2500 <= 3000)
-        var (t3Success, _, _) = await reservationService.ScheduleWithReservationAsync(
-            userId, 1000.00m, targetDate.AddHours(15), dailyLimit
-        );
-        t3Success.Should().BeTrue();
-
-        var totalReserved = await _dailyLimitService.GetCurrentDailySpendAsync(userId, DateOnly.FromDateTime(targetDate));
-        totalReserved.Should().Be(2500.00m);
-    }
 
     /// <summary>
     /// Bug #2 Regression Test: "Scheduled e-Transfers not processed in creation order"

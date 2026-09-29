@@ -58,4 +58,3 @@ public static class MassTransitConfiguration
         return services;
     }
 }
-
